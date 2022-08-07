@@ -1,0 +1,57 @@
+# The manifest for the "herav2-web-service" service.
+# Read the full specification for the "Load Balanced Web Service" type at:
+#  https://aws.github.io/copilot-cli/docs/manifest/lb-web-service/
+
+# Your service name will be used in naming your resources like log groups, ECS services, etc.
+name: herav2-web-service
+type: Load Balanced Web Service
+
+# Distribute traffic to your service.
+http:
+  # Requests to this path will be forwarded to your service.
+  # To match all requests you can use the "/" path.
+  path: '/'
+  # You can specify a custom health check path. The default is "/".
+  healthcheck: '/infra/health_check/'
+
+# Configuration for your containers and service.
+image:
+  # Docker build arguments. For additional overrides: https://aws.github.io/copilot-cli/docs/manifest/lb-web-service/#image-build
+  build: web/Dockerfile
+  # Port exposed through your container to route traffic to it.
+  port: 8000
+  healthcheck:
+    command: ["CMD", "python", "manage.py", "check"]
+    interval: 5s
+    retries: 2
+
+# Gunicorn number of workers: https://medium.com/building-the-system/gunicorn-3-means-of-concurrency-efbb547674b7
+cpu: 1024       # Number of CPU units for the task. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
+memory: 2048    # Amount of memory in MiB used by the task.
+count:
+  range:
+    min: 2
+    max: 10
+    spot_from: 1
+  cpu_percentage: 70
+  memory_percentage: 80
+
+
+exec: true     # Enable running commands in your container.
+
+# Optional fields for more advanced use-cases.
+#
+#variables:                    # Pass environment variables as key value pairs.
+#  LOG_LEVEL: info
+
+secrets:
+    HERA_DJANGO_SECRET_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/hera-django-secret-key
+
+#secrets:                      # Pass secrets from AWS Systems Manager (SSM) Parameter Store.
+#  FOO: FOO  # The key is the name of the environment variable, the value is the name of the SSM parameter.
+#  BAR: arn:aws:secretsmanager:ap-southeast-1:725074531081:secret:barsecret
+
+# You can override any of the values defined above by environment.
+#environments:
+#  test:
+#    count: 2               # Number of tasks to run for the "test" environment.

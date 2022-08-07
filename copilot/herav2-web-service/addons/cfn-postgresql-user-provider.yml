@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation Custom PostgreSQL User Provider
+Parameters:
+  App:
+    Type: String
+    Description: Your application's name.
+  Env:
+    Type: String
+    Description: The environment name your service, job, or workflow is being deployed to.
+  Name:
+    Type: String
+    Description: The name of the service, job, or workflow being deployed.
+Resources:
+  LambdaS3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub '${App}-${Env}-infra-lambdas'
+  LambdaPolicy:
+    Type: AWS::IAM::Policy
+    DependsOn:
+      - LambdaRole
+    Properties:
+      PolicyName: CFNCustomDBUserProviderPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource:
+              - '*'
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+            Resource:
+              - '*'
+          - Action:
+              - logs:*
+            Resource: arn:aws:logs:*:*:*
+            Effect: Allow
+      Roles:
+        - !Ref 'LambdaRole'
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+  CFNDBUserProvider:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - LambdaRole
+    Properties:
+      Description: CloudFormation Custom:PostgreSQLUser implementation
+      Code:
+        S3Bucket: !Sub 'binxio-public-${AWS::Region}'
+        S3Key: lambdas/cfn-postgresql-user-provider-0.5.9.zip
+      VpcConfig:
+        SecurityGroupIds:
+          !Split [',', { 'Fn::ImportValue': !Sub '${App}-${Env}-EnvironmentSecurityGroup' }]
+        SubnetIds:
+          !Split [',', { 'Fn::ImportValue': !Sub '${App}-${Env}-PublicSubnets' }]
+      FunctionName: !Sub
+        - 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:cfn-postgresql-user-provider-${VpcId}'
+        - VpcId:
+            Fn::ImportValue:
+              !Sub '${App}-${Env}-VpcId'
+      Handler: postgresql.handler
+      MemorySize: 128
+      Timeout: 30
+      Role: !GetAtt 'LambdaRole.Arn'
+      Runtime: python3.7
